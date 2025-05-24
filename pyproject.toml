@@ -1,0 +1,59 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "llm-from-scratch"
+dynamic = ["version"]
+description = ''
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = []
+authors = [
+  { name = "Godai Takashina", email = "azarashi.azarashi.a@gmail.com" },
+]
+classifiers = [
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "numpy==2.2.6",
+  "tiktoken==0.9.0",
+  "torch==2.7.0",
+]
+
+[project.urls]
+Documentation = "https://github.com/sankantsu/llm-from-scratch#readme"
+Issues = "https://github.com/sankantsu/llm-from-scratch/issues"
+Source = "https://github.com/sankantsu/llm-from-scratch"
+
+[tool.hatch.version]
+path = "src/llm_from_scratch/__about__.py"
+
+[tool.hatch.envs.types]
+extra-dependencies = [
+  "mypy>=1.0.0",
+]
+[tool.hatch.envs.types.scripts]
+check = "mypy --install-types --non-interactive {args:src/llm_from_scratch tests}"
+
+[tool.coverage.run]
+source_pkgs = ["llm_from_scratch", "tests"]
+branch = true
+parallel = true
+omit = [
+  "src/llm_from_scratch/__about__.py",
+]
+
+[tool.coverage.paths]
+llm_from_scratch = ["src/llm_from_scratch", "*/llm-from-scratch/src/llm_from_scratch"]
+tests = ["tests", "*/llm-from-scratch/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
