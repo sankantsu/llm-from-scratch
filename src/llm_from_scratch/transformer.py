@@ -3,11 +3,12 @@ from torch import nn
 
 from llm_from_scratch.attention import MultiHeadAttention
 from llm_from_scratch.feed_forward import FeedForward
+from llm_from_scratch.gpt_config import GPTConfig
 from llm_from_scratch.layer_norm import LayerNorm
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, cfg: dict):
+    def __init__(self, cfg: GPTConfig):
         super().__init__()
         emb_dim = cfg["emb_dim"]
         context_length = cfg["context_length"]
