@@ -15,7 +15,7 @@ Reference:
 ## Installation
 
 ```console
-pip install llm-from-scratch
+pip install -e .
 ```
 
 ## License
