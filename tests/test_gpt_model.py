@@ -7,11 +7,6 @@ from llm_from_scratch.gpt_model import GPTModel
 
 
 @pytest.fixture
-def tokenizer():
-    return tiktoken.get_encoding("gpt2")
-
-
-@pytest.fixture
 def batch(tokenizer: tiktoken.Encoding):
     texts = ["Every effort moves you", "Every day holds a"]
     tokens = [torch.tensor(tokenizer.encode(txt)) for txt in texts]
