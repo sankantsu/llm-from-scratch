@@ -1,17 +1,28 @@
 import tiktoken
 import torch
 
-from llm_from_scratch.generate_text import generate_text_simple
+from llm_from_scratch.generate_text import generate_text_simple, text_to_token_ids, token_ids_to_text
 from llm_from_scratch.gpt_config import GPT_CONFIG_124M
 from llm_from_scratch.gpt_model import GPTModel
+
+
+def test_text_to_token_ids(tokenizer: tiktoken.Encoding):
+    text = "Every effort moves you"
+    tokens = text_to_token_ids(text, tokenizer)
+    assert torch.all(tokens == torch.tensor([[6109, 3626, 6100, 345]]))
+
+
+def test_token_ids_to_text(tokenizer: tiktoken.Encoding):
+    token_ids = torch.tensor([[6109, 3626, 6100, 345]])
+    text = token_ids_to_text(token_ids, tokenizer)
+    assert text == "Every effort moves you"
 
 
 def test_generate_text(tokenizer: tiktoken.Encoding):
     torch.manual_seed(123)
 
     initial_text = "Hello, I am"
-    toks = tokenizer.encode(initial_text)
-    batch = torch.tensor(toks).unsqueeze(0)
+    batch = text_to_token_ids(initial_text, tokenizer)
 
     max_new_tokens = 6
     model = GPTModel(GPT_CONFIG_124M)
