@@ -2,6 +2,7 @@ import argparse
 import dataclasses
 import logging
 import os
+import matplotlib.pyplot as plt
 import tiktoken
 import torch
 import torch.nn.functional as F
@@ -14,6 +15,7 @@ from llm_from_scratch.gpt_model import GPTModel
 
 @dataclasses.dataclass
 class TrainResult:
+    n_epoch: int
     train_losses: list[float]
     validation_losses: list[float]
     tokens_seen: list[int]
@@ -89,6 +91,8 @@ def train_model_simple(
     tokenizer: tiktoken.Encoding,
 ) -> TrainResult:
     global_step = 0
+    tokens_seen = 0
+    train_losses, val_losses, track_tokens_seen = [], [], []
     for epoch in range(num_epochs):
         model.train()
         for input_batch, target_batch in train_loader:
@@ -100,11 +104,15 @@ def train_model_simple(
             loss = F.cross_entropy(logits.flatten(0, 1), target_batch.flatten())
             loss.backward()
             optimizer.step()
+            tokens_seen += input_batch.numel()
 
             if global_step % eval_freq == 0:
                 train_loss, val_loss = evaluate_model(
                     model, train_loader, val_loader, device, eval_iter
                 )
+                train_losses.append(train_loss)
+                val_losses.append(val_loss)
+                track_tokens_seen.append(tokens_seen)
                 print(
                     f"Ep {epoch+1} (Step {global_step:06d}): "
                     f"Train loss {train_loss:.3f}, Val loss {val_loss:.3f}",
@@ -122,7 +130,36 @@ def train_model_simple(
             decoded_text = decoded_text.replace("\n", r"\n")
             print(f"Sample text generation (Epoch {epoch+1}, Context: {start_context}):")
             print(decoded_text)
-    return TrainResult(train_losses=[], validation_losses=[], tokens_seen=[])
+    return TrainResult(
+        n_epoch=num_epochs,
+        train_losses=train_losses,
+        validation_losses=val_losses,
+        tokens_seen=track_tokens_seen,
+    )
+
+
+def plot_losses(train_result: TrainResult, filename: str = "loss_curve.png") -> None:
+    fig, ax1 = plt.subplots()
+
+    # Plot training and validation loss against epochs
+    n_epochs = train_result.n_epoch
+    train_losses = train_result.train_losses
+    val_losses = train_result.validation_losses
+    tokens_seen = train_result.tokens_seen
+    epochs_seen = torch.linspace(0, n_epochs, len(train_losses))
+    ax1.plot(epochs_seen, train_losses, label="Training loss")
+    ax1.plot(epochs_seen, val_losses, linestyle="-.", label="Validation loss")
+    ax1.set_xlabel("Epochs")
+    ax1.set_ylabel("Loss")
+    ax1.legend(loc="upper right")
+
+    # Create a second x-axis for tokens seen
+    ax2 = ax1.twiny()  # Create a second x-axis that shares the same y-axis
+    ax2.plot(tokens_seen, train_losses, alpha=0)  # Invisible plot for aligning ticks
+    ax2.set_xlabel("Tokens seen")
+
+    fig.tight_layout()
+    plt.savefig(filename)
 
 
 def main() -> None:
@@ -193,6 +230,7 @@ def main() -> None:
         start_context="Every effort moves you",
         tokenizer=tokenizer,
     )
+    plot_losses(train_result)
 
 
 if __name__ == "__main__":

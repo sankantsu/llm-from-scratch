@@ -32,10 +32,16 @@ Source = "https://github.com/sankantsu/llm-from-scratch"
 [tool.hatch.version]
 path = "src/llm_from_scratch/__about__.py"
 
+[tool.hatch.envs.training]
+extra-dependencies = [
+  "matplotlib==3.10.6",
+]
+
 [tool.hatch.envs.types]
 extra-dependencies = [
   "mypy>=1.0.0",
 ]
+
 [tool.hatch.envs.types.scripts]
 check = "mypy --install-types --non-interactive {args:src/llm_from_scratch tests}"
 
