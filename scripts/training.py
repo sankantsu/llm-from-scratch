@@ -18,6 +18,17 @@ from llm_from_scratch.gpt_model import GPTModel
 
 
 @dataclasses.dataclass
+class TrainingArgs:
+    learning_rate: float
+    weight_decay: float
+    num_epochs: int
+    batch_size: int
+    eval_freq: int
+    eval_iter: int
+    eval_context: str
+
+
+@dataclasses.dataclass
 class TrainResult:
     n_epoch: int
     train_losses: list[float]
@@ -87,13 +98,14 @@ def train_model_simple(
     train_loader: DataLoader,
     val_loader: DataLoader,
     optimizer: torch.optim.Optimizer,
-    device: torch.device,
-    num_epochs: int,
-    eval_freq: int,
-    eval_iter: int,
-    start_context: str,
     tokenizer: tiktoken.Encoding,
+    training_args: TrainingArgs,
 ) -> TrainResult:
+    num_epochs = training_args.num_epochs
+    eval_freq = training_args.eval_freq
+    eval_iter = training_args.eval_iter
+
+    device = next(model.parameters()).device
     global_step = 0
     tokens_seen = 0
     train_losses, val_losses, track_tokens_seen = [], [], []
@@ -126,6 +138,7 @@ def train_model_simple(
 
         # Print generated text sample
         model.eval()
+        start_context = training_args.eval_context
         context_size = model.pos_emb.weight.shape[0]
         tokens = text_to_token_ids(start_context, tokenizer).to(device)
         with torch.no_grad():
@@ -192,16 +205,20 @@ def main() -> None:
     model = GPTModel(gpt_config)
     model.to(device)
 
-    training_args = {
-        "learning_rate": 5e-4,
-        "num_epochs": 10,
-        "batch_size": 2,
-        "weight_decay": 0.1,
-    }
+    default_context = "Every effort moves you"
+    training_args = TrainingArgs(
+        learning_rate=5e-4,
+        num_epochs=10,
+        batch_size=2,
+        weight_decay=0.1,
+        eval_freq=5,
+        eval_iter=1,
+        eval_context=default_context,
+    )
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=training_args["learning_rate"],
-        weight_decay=training_args["weight_decay"],
+        lr=training_args.learning_rate,
+        weight_decay=training_args.weight_decay,
     )
 
     # Setup data loader
@@ -209,7 +226,7 @@ def main() -> None:
     split_idx = int(len(text_data) * train_ratio)
     train_loader = create_dataloader_v1(
         text_data[:split_idx],
-        batch_size=training_args["batch_size"],
+        batch_size=training_args.batch_size,
         max_length=gpt_config["context_length"],
         stride=gpt_config["context_length"],
         drop_last=True,
@@ -217,7 +234,7 @@ def main() -> None:
     )
     validation_loader = create_dataloader_v1(
         text_data[split_idx:],
-        batch_size=training_args["batch_size"],
+        batch_size=training_args.batch_size,
         max_length=gpt_config["context_length"],
         stride=gpt_config["context_length"],
         drop_last=False,
@@ -227,16 +244,12 @@ def main() -> None:
     # Train model
     tokenizer = tiktoken.get_encoding("gpt2")
     train_result = train_model_simple(
-        model,
-        train_loader,
-        validation_loader,
-        optimizer,
-        device,
-        num_epochs=training_args["num_epochs"],
-        eval_freq=5,
-        eval_iter=1,
-        start_context="Every effort moves you",
+        model=model,
+        train_loader=train_loader,
+        val_loader=validation_loader,
+        optimizer=optimizer,
         tokenizer=tokenizer,
+        training_args=training_args,
     )
     plot_losses(train_result)
 
