@@ -20,6 +20,8 @@ from llm_from_scratch.gpt_model import GPTModel
 
 @dataclasses.dataclass
 class TrainingArgs:
+    enable_lr_scheduling: bool
+    enable_gradient_clipping: bool
     peak_lr: float
     initial_lr: float
     min_lr: float
@@ -97,6 +99,26 @@ def evaluate_model(
     return train_loss, val_loss
 
 
+def calc_learning_rage(
+    global_step: int,
+    warmup_steps: int,
+    total_training_steps: int,
+    peak_lr: float,
+    initial_lr: float,
+    min_lr: float,
+) -> float:
+    # Adjust the learning rate based on the current phase (warmup or cosine annealing)
+    if global_step < warmup_steps:
+        # Linear warmup
+        lr_increment = (peak_lr - initial_lr) / warmup_steps
+        lr = initial_lr + global_step * lr_increment
+    else:
+        # Cosine annealing after warmup
+        progress = (global_step - warmup_steps) / (total_training_steps - warmup_steps)
+        lr = min_lr + (peak_lr - min_lr) * 0.5 * (1 + math.cos(math.pi * progress))
+    return lr
+
+
 def train_model_simple(
     model: torch.nn.Module,
     train_loader: DataLoader,
@@ -108,12 +130,15 @@ def train_model_simple(
     num_epochs = training_args.num_epochs
     eval_freq = training_args.eval_freq
     eval_iter = training_args.eval_iter
+
+    enable_lr_scheduling = training_args.enable_lr_scheduling
+    enable_gradient_clipping = training_args.enable_gradient_clipping
+
     total_training_steps = num_epochs * len(train_loader)
     warmup_steps = int(total_training_steps * training_args.warmup_ratio)
     peak_lr = training_args.peak_lr
     initial_lr = training_args.initial_lr
     min_lr = training_args.min_lr
-    lr_increment = (peak_lr - initial_lr) / warmup_steps
 
     device = next(model.parameters()).device
     global_step = 0
@@ -127,25 +152,25 @@ def train_model_simple(
 
             optimizer.zero_grad()
 
-            # Adjust the learning rate based on the current phase (warmup or cosine annealing)
-            if global_step < warmup_steps:
-                # Linear warmup
-                lr = initial_lr + global_step * lr_increment
-            else:
-                # Cosine annealing after warmup
-                progress = ((global_step - warmup_steps) /
-                            (total_training_steps - warmup_steps))
-                lr = min_lr + (peak_lr - min_lr) * 0.5 * (1 + math.cos(math.pi * progress))
-            # Apply the calculated learning rate to the optimizer
-            for param_group in optimizer.param_groups:
-                param_group["lr"] = lr
+            if enable_lr_scheduling:
+                lr = calc_learning_rage(
+                    global_step=global_step,
+                    warmup_steps=warmup_steps,
+                    total_training_steps=total_training_steps,
+                    peak_lr=peak_lr,
+                    initial_lr=initial_lr,
+                    min_lr=min_lr,
+                )
+                # Apply the calculated learning rate to the optimizer
+                for param_group in optimizer.param_groups:
+                    param_group["lr"] = lr
 
             logits = model(input_batch)
             loss = F.cross_entropy(logits.flatten(0, 1), target_batch.flatten())
             loss.backward()
 
             # Gradient clipping
-            if global_step >= warmup_steps:
+            if enable_gradient_clipping and global_step >= warmup_steps:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
             optimizer.step()
@@ -219,6 +244,19 @@ def main() -> None:
     parser.add_argument(
         "-d", "--device", default="cpu", help="Device to use for training."
     )
+    parser.add_argument(
+        "--disable-lr-scheduling",
+        action="store_true",
+        help="Disable learning rate scheduling.",
+    )
+    parser.add_argument(
+        "--disable-gradient-clipping",
+        action="store_true",
+        help="Disable gradient clipping.",
+    )
+    parser.add_argument(
+        "--peak-lr", type=float, default=1e-3, help="Peak learning rate."
+    )
     args = parser.parse_args()
 
     torch.manual_seed(123)
@@ -236,9 +274,11 @@ def main() -> None:
 
     default_context = "Every effort moves you"
     training_args = TrainingArgs(
-        peak_lr=0.001,
-        initial_lr=1e-5,
-        min_lr=1e-5,
+        enable_lr_scheduling=not args.disable_lr_scheduling,
+        enable_gradient_clipping=not args.disable_gradient_clipping,
+        peak_lr=args.peak_lr,
+        initial_lr=args.peak_lr / 100,
+        min_lr=args.peak_lr / 100,
         warmup_ratio=0.2,
         num_epochs=10,
         batch_size=2,
