@@ -117,7 +117,9 @@ def main() -> None:
     logging.basicConfig(level="INFO")
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-d", "--device", default="cpu", help="Device to use for training.")
+    parser.add_argument(
+        "-d", "--device", default="cpu", help="Device to use for training."
+    )
     args = parser.parse_args()
 
     torch.manual_seed(123)
