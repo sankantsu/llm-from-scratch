@@ -61,7 +61,8 @@ class MultiHeadAttention(nn.Module):
 
         atten_scores = queries @ keys.transpose(2, 3)
         atten_scores.masked_fill_(
-            self.mask.bool()[:num_tokens, :num_tokens], -torch.inf
+            self.mask.bool()[:num_tokens, :num_tokens],  # type: ignore[operator]
+            -torch.inf,
         )
         atten_weights = torch.softmax(atten_scores / keys.shape[-1] ** 0.5, dim=-1)
         atten_weights = self.dropout(atten_weights)

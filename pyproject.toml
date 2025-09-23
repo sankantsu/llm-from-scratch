@@ -45,6 +45,10 @@ extra-dependencies = [
 [tool.hatch.envs.types.scripts]
 check = "mypy --install-types --non-interactive {args:src/llm_from_scratch tests}"
 
+[[tool.mypy.overrides]]
+module = ["pytest.*"]
+ignore_missing_imports = true
+
 [tool.coverage.run]
 source_pkgs = ["llm_from_scratch", "tests"]
 branch = true
