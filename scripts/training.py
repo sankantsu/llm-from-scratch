@@ -1,6 +1,7 @@
 import argparse
 import dataclasses
 import logging
+import math
 import os
 import matplotlib.pyplot as plt
 import tiktoken
@@ -19,8 +20,11 @@ from llm_from_scratch.gpt_model import GPTModel
 
 @dataclasses.dataclass
 class TrainingArgs:
-    learning_rate: float
+    peak_lr: float
+    initial_lr: float
+    min_lr: float
     weight_decay: float
+    warmup_ratio: float
     num_epochs: int
     batch_size: int
     eval_freq: int
@@ -104,6 +108,12 @@ def train_model_simple(
     num_epochs = training_args.num_epochs
     eval_freq = training_args.eval_freq
     eval_iter = training_args.eval_iter
+    total_training_steps = num_epochs * len(train_loader)
+    warmup_steps = int(total_training_steps * training_args.warmup_ratio)
+    peak_lr = training_args.peak_lr
+    initial_lr = training_args.initial_lr
+    min_lr = training_args.min_lr
+    lr_increment = (peak_lr - initial_lr) / warmup_steps
 
     device = next(model.parameters()).device
     global_step = 0
@@ -116,9 +126,28 @@ def train_model_simple(
             target_batch = target_batch.to(device)
 
             optimizer.zero_grad()
+
+            # Adjust the learning rate based on the current phase (warmup or cosine annealing)
+            if global_step < warmup_steps:
+                # Linear warmup
+                lr = initial_lr + global_step * lr_increment
+            else:
+                # Cosine annealing after warmup
+                progress = ((global_step - warmup_steps) /
+                            (total_training_steps - warmup_steps))
+                lr = min_lr + (peak_lr - min_lr) * 0.5 * (1 + math.cos(math.pi * progress))
+            # Apply the calculated learning rate to the optimizer
+            for param_group in optimizer.param_groups:
+                param_group["lr"] = lr
+
             logits = model(input_batch)
             loss = F.cross_entropy(logits.flatten(0, 1), target_batch.flatten())
             loss.backward()
+
+            # Gradient clipping
+            if global_step >= warmup_steps:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
             optimizer.step()
             tokens_seen += input_batch.numel()
 
@@ -207,7 +236,10 @@ def main() -> None:
 
     default_context = "Every effort moves you"
     training_args = TrainingArgs(
-        learning_rate=5e-4,
+        peak_lr=0.001,
+        initial_lr=1e-5,
+        min_lr=1e-5,
+        warmup_ratio=0.2,
         num_epochs=10,
         batch_size=2,
         weight_decay=0.1,
@@ -217,7 +249,7 @@ def main() -> None:
     )
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=training_args.learning_rate,
+        lr=training_args.peak_lr,
         weight_decay=training_args.weight_decay,
     )
 
