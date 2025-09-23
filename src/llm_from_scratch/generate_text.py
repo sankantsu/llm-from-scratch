@@ -12,7 +12,9 @@ def token_ids_to_text(token_ids: torch.Tensor, tokenizer: tiktoken.Encoding):
     return tokenizer.decode(flat.tolist())
 
 
-def generate_text_simple(model, batch: torch.Tensor, max_new_tokens: int, context_size: int):
+def generate_text_simple(
+    model, batch: torch.Tensor, max_new_tokens: int, context_size: int
+):
     tok_idx = batch
     for _ in range(max_new_tokens):
         tok_idx = tok_idx[:, -context_size:]

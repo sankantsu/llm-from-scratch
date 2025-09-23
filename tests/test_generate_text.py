@@ -1,7 +1,11 @@
 import tiktoken
 import torch
 
-from llm_from_scratch.generate_text import generate_text_simple, text_to_token_ids, token_ids_to_text
+from llm_from_scratch.generate_text import (
+    generate_text_simple,
+    text_to_token_ids,
+    token_ids_to_text,
+)
 from llm_from_scratch.gpt_config import GPT_CONFIG_124M
 from llm_from_scratch.gpt_model import GPTModel
 
@@ -28,7 +32,10 @@ def test_generate_text(tokenizer: tiktoken.Encoding):
     model = GPTModel(GPT_CONFIG_124M)
     model.eval()
     out = generate_text_simple(
-        model, batch, max_new_tokens=max_new_tokens, context_size=GPT_CONFIG_124M["context_length"]
+        model,
+        batch,
+        max_new_tokens=max_new_tokens,
+        context_size=GPT_CONFIG_124M["context_length"],
     )
     assert len(out.shape) == 2
     assert out.shape[0] == batch.shape[0]

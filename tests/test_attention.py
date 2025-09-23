@@ -11,7 +11,9 @@ def test_attention():
 
     dropout = 0.0
     context_length = num_tokens
-    self_attention_layer = MultiHeadAttention(d_in, d_out, context_length=context_length, dropout=dropout, num_heads=2)
+    self_attention_layer = MultiHeadAttention(
+        d_in, d_out, context_length=context_length, dropout=dropout, num_heads=2
+    )
 
     batch_size = 8
     batch = torch.rand((batch_size, num_tokens, d_in))
@@ -27,7 +29,13 @@ def test_attention_invalid_num_head():
     dropout = 0.0
     num_head = 3  # Not divisible
     with pytest.raises(ValueError, match="d_out must be divisible by num_heads"):
-        MultiHeadAttention(d_in, d_out, context_length=context_length, dropout=dropout, num_heads=num_head)
+        MultiHeadAttention(
+            d_in,
+            d_out,
+            context_length=context_length,
+            dropout=dropout,
+            num_heads=num_head,
+        )
 
 
 def test_attention_num_tokens_exceed_context_length():
@@ -43,5 +51,8 @@ def test_attention_num_tokens_exceed_context_length():
     batch_size = 1
     num_tokens = context_length + 1  # larger than context length
     batch = torch.rand((batch_size, num_tokens, d_in))
-    with pytest.raises(ValueError, match="Number of input tokens must be smaller than or equal to context length"):
+    with pytest.raises(
+        ValueError,
+        match="Number of input tokens must be smaller than or equal to context length",
+    ):
         attention_layer(batch)

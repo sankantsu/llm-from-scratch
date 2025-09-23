@@ -37,20 +37,40 @@ class MultiHeadAttention(nn.Module):
     def forward(self, x: torch.Tensor):
         batch_size, num_tokens, d_in = x.shape
         if num_tokens > self.context_length:
-            msg = "Number of input tokens must be smaller than or equal to context length"
+            msg = (
+                "Number of input tokens must be smaller than or equal to context length"
+            )
             raise ValueError(msg)
 
         # queries, keys, values: (batch_size, num_heads, num_tokens, head_dim)
-        queries = self.W_query(x).view(batch_size, num_tokens, self.num_heads, self.head_dim).transpose(1, 2)
-        keys = self.W_key(x).view(batch_size, num_tokens, self.num_heads, self.head_dim).transpose(1, 2)
-        values = self.W_value(x).view(batch_size, num_tokens, self.num_heads, self.head_dim).transpose(1, 2)
+        queries = (
+            self.W_query(x)
+            .view(batch_size, num_tokens, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+        )
+        keys = (
+            self.W_key(x)
+            .view(batch_size, num_tokens, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+        )
+        values = (
+            self.W_value(x)
+            .view(batch_size, num_tokens, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+        )
 
         atten_scores = queries @ keys.transpose(2, 3)
-        atten_scores.masked_fill_(self.mask.bool()[:num_tokens, :num_tokens], -torch.inf)
+        atten_scores.masked_fill_(
+            self.mask.bool()[:num_tokens, :num_tokens], -torch.inf
+        )
         atten_weights = torch.softmax(atten_scores / keys.shape[-1] ** 0.5, dim=-1)
         atten_weights = self.dropout(atten_weights)
 
         context_vecs = atten_weights @ values
         # (batch_size, num_heads, num_tokens, head_dim) -> (batch_size, num_tokens, d_out)
-        context_vecs = context_vecs.transpose(1, 2).contiguous().view(batch_size, num_tokens, self.d_out)
+        context_vecs = (
+            context_vecs.transpose(1, 2)
+            .contiguous()
+            .view(batch_size, num_tokens, self.d_out)
+        )
         return self.out_proj(context_vecs)

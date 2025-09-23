@@ -8,7 +8,11 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from llm_from_scratch.dataset import create_dataloader_v1, get_verdict_txt
-from llm_from_scratch.generate_text import text_to_token_ids, token_ids_to_text, generate_text_simple
+from llm_from_scratch.generate_text import (
+    text_to_token_ids,
+    token_ids_to_text,
+    generate_text_simple,
+)
 from llm_from_scratch.gpt_config import GPT_CONFIG_124M
 from llm_from_scratch.gpt_model import GPTModel
 
@@ -125,10 +129,14 @@ def train_model_simple(
         context_size = model.pos_emb.weight.shape[0]
         tokens = text_to_token_ids(start_context, tokenizer).to(device)
         with torch.no_grad():
-            token_ids = generate_text_simple(model, tokens, max_new_tokens=50, context_size=context_size)
+            token_ids = generate_text_simple(
+                model, tokens, max_new_tokens=50, context_size=context_size
+            )
             decoded_text = token_ids_to_text(token_ids, tokenizer)
             decoded_text = decoded_text.replace("\n", r"\n")
-            print(f"Sample text generation (Epoch {epoch+1}, Context: {start_context}):")
+            print(
+                f"Sample text generation (Epoch {epoch+1}, Context: {start_context}):"
+            )
             print(decoded_text)
     return TrainResult(
         n_epoch=num_epochs,
