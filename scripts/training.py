@@ -1,0 +1,185 @@
+import argparse
+import dataclasses
+import logging
+import os
+import tiktoken
+import torch
+import torch.nn.functional as F
+from torch.utils.data import DataLoader
+from llm_from_scratch.dataset import create_dataloader_v1, get_verdict_txt
+from llm_from_scratch.gpt_config import GPT_CONFIG_124M
+from llm_from_scratch.gpt_model import GPTModel
+
+
+@dataclasses.dataclass
+class TrainResult:
+    train_losses: list[float]
+    validation_losses: list[float]
+    tokens_seen: list[int]
+
+
+def get_verdict_txt_cached() -> str:
+    file_path = "the-verdict.txt"
+
+    # Cache on file_path
+    if not os.path.exists(file_path):
+        text_data = get_verdict_txt()
+        with open(file_path, "w", encoding="utf-8") as file:
+            file.write(text_data)
+    else:
+        with open(file_path, "r", encoding="utf-8") as file:
+            text_data = file.read()
+
+    return text_data
+
+
+def calc_loss_loader(
+    data_loader: DataLoader,
+    model: torch.nn.Module,
+    device: torch.device,
+    num_batches: int | None = None,
+) -> float:
+    total_loss = 0.0
+    if len(data_loader) == 0:
+        return float("nan")
+    elif num_batches is None:
+        num_batches = len(data_loader)
+    else:
+        num_batches = min(num_batches, len(data_loader))
+    for i, (input_batch, target_batch) in enumerate(data_loader):
+        if i < num_batches:
+            input_batch = input_batch.to(device)
+            target_batch = target_batch.to(device)
+            logits = model(input_batch)
+            loss = F.cross_entropy(logits.flatten(0, 1), target_batch.flatten())
+            total_loss += loss.item()
+        else:
+            break
+    return total_loss / num_batches
+
+
+def evaluate_model(
+    model: torch.nn.Module,
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+    device: torch.device,
+    eval_iter: int,
+):
+    model.eval()
+    with torch.no_grad():
+        train_loss = calc_loss_loader(
+            train_loader, model, device, num_batches=eval_iter
+        )
+        val_loss = calc_loss_loader(val_loader, model, device, num_batches=eval_iter)
+    model.train()
+    return train_loss, val_loss
+
+
+def train_model_simple(
+    model: torch.nn.Module,
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+    optimizer: torch.optim.Optimizer,
+    device: torch.device,
+    num_epochs: int,
+    eval_freq: int,
+    eval_iter: int,
+    start_context: str,
+    tokenizer: tiktoken.Encoding,
+) -> TrainResult:
+    global_step = 0
+    for epoch in range(num_epochs):
+        model.train()
+        for input_batch, target_batch in train_loader:
+            input_batch = input_batch.to(device)
+            target_batch = target_batch.to(device)
+
+            optimizer.zero_grad()
+            logits = model(input_batch)
+            loss = F.cross_entropy(logits.flatten(0, 1), target_batch.flatten())
+            loss.backward()
+            optimizer.step()
+
+            if global_step % eval_freq == 0:
+                train_loss, val_loss = evaluate_model(
+                    model, train_loader, val_loader, device, eval_iter
+                )
+                print(
+                    f"Ep {epoch+1} (Step {global_step:06d}): "
+                    f"Train loss {train_loss:.3f}, Val loss {val_loss:.3f}",
+                    flush=True,
+                )
+            global_step += 1
+    return TrainResult(train_losses=[], validation_losses=[], tokens_seen=[])
+
+
+def main() -> None:
+    logging.basicConfig(level="INFO")
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-d", "--device", default="cpu", help="Device to use for training.")
+    args = parser.parse_args()
+
+    torch.manual_seed(123)
+
+    device = torch.device(args.device)
+    logging.info(f"Using device {device}")
+
+    text_data = get_verdict_txt_cached()
+
+    # Setup model and optimizer
+    gpt_config = GPT_CONFIG_124M.copy()
+    gpt_config["context_length"] = 256  # Shortened context length (orig: 1024)
+    model = GPTModel(gpt_config)
+    model.to(device)
+
+    training_args = {
+        "learning_rate": 5e-4,
+        "num_epochs": 10,
+        "batch_size": 2,
+        "weight_decay": 0.1,
+    }
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=training_args["learning_rate"],
+        weight_decay=training_args["weight_decay"],
+    )
+
+    # Setup data loader
+    train_ratio = 0.9
+    split_idx = int(len(text_data) * train_ratio)
+    train_loader = create_dataloader_v1(
+        text_data[:split_idx],
+        batch_size=training_args["batch_size"],
+        max_length=gpt_config["context_length"],
+        stride=gpt_config["context_length"],
+        drop_last=True,
+        shuffle=True,
+    )
+    validation_loader = create_dataloader_v1(
+        text_data[split_idx:],
+        batch_size=training_args["batch_size"],
+        max_length=gpt_config["context_length"],
+        stride=gpt_config["context_length"],
+        drop_last=False,
+        shuffle=False,
+    )
+
+    # Train model
+    tokenizer = tiktoken.get_encoding("gpt2")
+    train_result = train_model_simple(
+        model,
+        train_loader,
+        validation_loader,
+        optimizer,
+        device,
+        num_epochs=training_args["num_epochs"],
+        eval_freq=5,
+        eval_iter=1,
+        start_context="Every effort moves you",
+        tokenizer=tokenizer,
+    )
+
+
+if __name__ == "__main__":
+    main()
