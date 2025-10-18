@@ -13,13 +13,22 @@ def token_ids_to_text(token_ids: torch.Tensor, tokenizer: tiktoken.Encoding):
 
 
 def generate_text_simple(
-    model, batch: torch.Tensor, max_new_tokens: int, context_size: int
+    model,
+    batch: torch.Tensor,
+    max_new_tokens: int,
+    context_size: int,
+    use_cache: bool = True,
 ):
     tok_idx = batch
-    for _ in range(max_new_tokens):
-        tok_idx = tok_idx[:, -context_size:]
-        with torch.no_grad():
-            logits = model(tok_idx)
+    for i in range(max_new_tokens):
+        if use_cache and i > 0:
+            with torch.no_grad():
+                # Feed only the last token
+                logits = model(tok_idx[:, [-1]], use_cache=True)
+        else:
+            tok_idx = tok_idx[:, -context_size:]
+            with torch.no_grad():
+                logits = model(tok_idx)
 
         # Take only the last output token for each batch
         logits = logits[:, -1, :]

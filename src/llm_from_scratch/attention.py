@@ -34,7 +34,12 @@ class MultiHeadAttention(nn.Module):
             torch.triu(torch.ones(context_length, context_length), diagonal=1),
         )
 
-    def forward(self, x: torch.Tensor):
+        # KV cache: (batch_size, num_tokens, num_heads, head_dim)
+        self.register_buffer("k_cache", None, persistent=False)
+        self.register_buffer("v_cache", None, persistent=False)
+        self.ptr_current_pos = 0
+
+    def forward(self, x: torch.Tensor, use_cache: bool = False) -> torch.Tensor:
         batch_size, num_tokens, d_in = x.shape
         if num_tokens > self.context_length:
             msg = (
@@ -42,26 +47,57 @@ class MultiHeadAttention(nn.Module):
             )
             raise ValueError(msg)
 
-        # queries, keys, values: (batch_size, num_heads, num_tokens, head_dim)
-        queries = (
-            self.W_query(x)
-            .view(batch_size, num_tokens, self.num_heads, self.head_dim)
-            .transpose(1, 2)
+        if use_cache and self.k_cache is not None:
+            assert num_tokens == 1, "Only the last token should be fed."
+
+        queries = self.W_query(x).view(
+            batch_size, num_tokens, self.num_heads, self.head_dim
         )
-        keys = (
-            self.W_key(x)
-            .view(batch_size, num_tokens, self.num_heads, self.head_dim)
-            .transpose(1, 2)
+        keys_new = self.W_key(x).view(
+            batch_size, num_tokens, self.num_heads, self.head_dim
         )
-        values = (
-            self.W_value(x)
-            .view(batch_size, num_tokens, self.num_heads, self.head_dim)
-            .transpose(1, 2)
+        values_new = self.W_value(x).view(
+            batch_size, num_tokens, self.num_heads, self.head_dim
         )
 
+        if use_cache:
+            if self.k_cache is None:
+                assert self.v_cache is None
+                # Prefill
+                self.k_cache = keys_new
+                self.v_cache = values_new
+            else:
+                # Decode
+                # Append new key and values to cache
+                assert keys_new.shape[1] == 1 and values_new.shape[1] == 1
+                self.k_cache = torch.cat([self.k_cache, keys_new], dim=1)
+                self.v_cache = torch.cat([self.v_cache, values_new], dim=1)
+            keys, values = self.k_cache, self.v_cache
+        else:
+            keys, values = keys_new, values_new
+
+        # (batch_size, num_tokens, num_heads, head_dim) -> (batch_size, num_heads, num_tokens, head_dim)
+        queries = queries.transpose(1, 2)
+        keys = keys.transpose(1, 2)
+        values = values.transpose(1, 2)
+
         atten_scores = queries @ keys.transpose(2, 3)
+
+        # Causal mask
+        if use_cache:
+            num_tokens_new = queries.shape[2]
+            num_tokens_total = keys.shape[2]
+            # Prefill: num_tokens_new == num_tokens_total
+            # Decode: num_tokens_new == 1
+            assert num_tokens_new == num_tokens_total or num_tokens_new == 1
+            pos_start = self.ptr_current_pos
+            pos_end = self.ptr_current_pos + num_tokens_new
+            mask = self.mask.bool()[pos_start:pos_end, :num_tokens_total]
+            self.ptr_current_pos = pos_end
+        else:
+            mask = self.mask.bool()[:num_tokens, :num_tokens]  # type: ignore[operator]
         atten_scores.masked_fill_(
-            self.mask.bool()[:num_tokens, :num_tokens],  # type: ignore[operator]
+            mask,
             -torch.inf,
         )
         atten_weights = torch.softmax(atten_scores / keys.shape[-1] ** 0.5, dim=-1)
@@ -75,3 +111,8 @@ class MultiHeadAttention(nn.Module):
             .view(batch_size, num_tokens, self.d_out)
         )
         return self.out_proj(context_vecs)
+
+    def reset_cache(self) -> None:
+        self.k_cache = None
+        self.v_cache = None
+        self.ptr_current_pos = 0

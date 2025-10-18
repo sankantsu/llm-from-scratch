@@ -28,11 +28,11 @@ class TransformerBlock(nn.Module):
         self.norm2 = LayerNorm(emb_dim)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, use_cache: bool = False) -> torch.Tensor:
         # Self attention
         shortcut = x
         x = self.norm1(x)
-        x = self.attention(x)
+        x = self.attention(x, use_cache=use_cache)
         x = self.dropout(x)
         x = x + shortcut
 

@@ -1,3 +1,4 @@
+import pytest
 import tiktoken
 import torch
 
@@ -22,7 +23,8 @@ def test_token_ids_to_text(tokenizer: tiktoken.Encoding):
     assert text == "Every effort moves you"
 
 
-def test_generate_text(tokenizer: tiktoken.Encoding):
+@pytest.mark.parametrize("use_cache", [False, True])
+def test_generate_text(tokenizer: tiktoken.Encoding, use_cache):
     torch.manual_seed(123)
 
     initial_text = "Hello, I am"
