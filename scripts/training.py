@@ -3,16 +3,18 @@ import dataclasses
 import logging
 import math
 import os
+
 import matplotlib.pyplot as plt
 import tiktoken
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
+
 from llm_from_scratch.dataset import create_dataloader_v1, get_verdict_txt
 from llm_from_scratch.generate_text import (
+    generate_text_simple,
     text_to_token_ids,
     token_ids_to_text,
-    generate_text_simple,
 )
 from llm_from_scratch.gpt_config import GPT_CONFIG_124M
 from llm_from_scratch.gpt_model import GPTModel
@@ -51,7 +53,7 @@ def get_verdict_txt_cached() -> str:
         with open(file_path, "w", encoding="utf-8") as file:
             file.write(text_data)
     else:
-        with open(file_path, "r", encoding="utf-8") as file:
+        with open(file_path, encoding="utf-8") as file:
             text_data = file.read()
 
     return text_data
